@@ -136,8 +136,12 @@ async function start() {
                 await sock.sendMessage(from, { text: '🏓 *Pong!*\n\nO bot está online e monitorando o Google Classroom com sucesso.' });
             }
             
-            else if (text === '!help' || text === '!ajuda' || text === '!menu') {
-                console.log(`[Comando] !menu recebido de ${from}`);
+            else if (text === '!help' || text === '!ajuda' || text === '!menu' || text === '/menu') {
+                console.log(`[Comando] Menu solicitado por ${from}`);
+                const fs = require('fs');
+                const path = require('path');
+                const menuImagePath = path.join(__dirname, '../menu.png');
+                
                 const menuText = `*╔══════════════════╗*
 *║      🤖 CLASSROOM BOT      ║*
 *╚══════════════════╝*
@@ -147,9 +151,9 @@ async function start() {
 *📂 COMANDOS DISPONÍVEIS:*
 
 *🚀 GERAL*
-> *!menu* - Abre este menu
+> */menu* - Abre este menu
 > *!ping* - Verifica o status do bot
-> *!id* - Mostra o ID deste chat/grupo
+> */id* - Mostra o ID deste chat/grupo
 
 *📚 CLASSROOM*
 > *!check* - Força verificação de atividades
@@ -164,19 +168,24 @@ async function start() {
 *════════════════════*
 _Desenvolvido por Manus AI_`;
 
-                await sock.sendMessage(from, { 
-                    image: { url: 'https://i.imgur.com/your-image-url.png' }, // Placeholder, o usuário deve subir a imagem ou usaremos a local
+                const messageOptions = { 
                     caption: menuText,
                     contextInfo: {
                         externalAdReply: {
                             title: 'CLASSROOM BOT SYSTEM',
                             body: 'Monitoramento em Tempo Real',
                             mediaType: 1,
-                            thumbnailUrl: 'https://i.imgur.com/your-image-url.png',
                             sourceUrl: 'https://github.com/gustaxseven/classroom-whatsapp-bot'
                         }
                     }
-                });
+                };
+
+                // Se a imagem existir localmente, envia com imagem, senão envia só texto
+                if (fs.existsSync(menuImagePath)) {
+                    messageOptions.image = fs.readFileSync(menuImagePath);
+                }
+
+                await sock.sendMessage(from, messageOptions);
             }
 
             else if (text.startsWith('!bc ')) {
