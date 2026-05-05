@@ -68,6 +68,12 @@ async function getNewToken(oAuth2Client) {
                 const { tokens } = await oAuth2Client.getToken(code);
                 oAuth2Client.setCredentials(tokens);
                 
+                // Garantir que a pasta config existe
+                const dir = path.dirname(TOKEN_PATH);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+
                 // Salvar o token para uso futuro
                 fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
                 console.log('Token armazenado em', TOKEN_PATH);
