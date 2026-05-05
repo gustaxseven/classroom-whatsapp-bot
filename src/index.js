@@ -138,9 +138,6 @@ async function start() {
             
             else if (text === '!help' || text === '!ajuda' || text === '!menu' || text === '/menu') {
                 console.log(`[Comando] Menu solicitado por ${from}`);
-                const fs = require('fs');
-                const path = require('path');
-                const menuImagePath = path.join(__dirname, '../menu.png');
                 
                 const menuText = `*╔══════════════════╗*
 *║      🤖 CLASSROOM BOT      ║*
@@ -168,24 +165,21 @@ async function start() {
 *════════════════════*
 _Desenvolvido por Manus AI_`;
 
-                const messageOptions = { 
+                const menuImageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663618494595/fSWSrzmMEkGGRkqE.png';
+
+                await sock.sendMessage(from, { 
+                    image: { url: menuImageUrl },
                     caption: menuText,
                     contextInfo: {
                         externalAdReply: {
                             title: 'CLASSROOM BOT SYSTEM',
                             body: 'Monitoramento em Tempo Real',
                             mediaType: 1,
+                            thumbnailUrl: menuImageUrl,
                             sourceUrl: 'https://github.com/gustaxseven/classroom-whatsapp-bot'
                         }
                     }
-                };
-
-                // Se a imagem existir localmente, envia com imagem, senão envia só texto
-                if (fs.existsSync(menuImagePath)) {
-                    messageOptions.image = fs.readFileSync(menuImagePath);
-                }
-
-                await sock.sendMessage(from, messageOptions);
+                });
             }
 
             else if (text.startsWith('!bc ')) {
