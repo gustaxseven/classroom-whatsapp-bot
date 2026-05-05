@@ -85,7 +85,12 @@ async function checkNewActivities(auth) {
                 }
             }
         } catch (e) {
-            console.error(`Erro ao verificar curso ${course.name}:`, e.message);
+            // Se for erro de permissão, apenas loga de forma discreta
+            if (e.code === 403) {
+                console.log(`⚠️ Sem permissão para acessar o curso: ${course.name}`);
+            } else {
+                console.error(`❌ Erro no curso ${course.name}:`, e.message);
+            }
         }
     }
 
