@@ -1,7 +1,7 @@
 const { connectToWhatsApp } = require('./modules/whatsapp');
 const { authorize } = require('./modules/googleAuth');
-const { checkNewActivities } = require('./modules/classroom');
-const { formatActivityMessage } = require('./utils/formatter');
+const { checkNewActivities, listCourses, getCourseWork } = require('./modules/classroom');
+const { formatActivityMessage, formatReminderMessage } = require('./utils/formatter');
 require('dotenv').config();
 
 async function start() {
@@ -65,6 +65,43 @@ async function start() {
         const checkInterval = 60 * 1000; 
         setInterval(performCheck, checkInterval);
 
+        // Loop de Lembretes (Verifica a cada 1 hora)
+        const reminderCache = new Set();
+        setInterval(async () => {
+            try {
+                console.log('⏰ Verificando prazos de entrega (Lembretes 24h)...');
+                const courses = await listCourses(auth);
+                const now = new Date();
+
+                for (const course of courses) {
+                    const activities = await getCourseWork(auth, course.id);
+                    for (const activity of activities) {
+                        if (activity.dueDate) {
+                            const dueDate = new Date(activity.dueDate.year, activity.dueDate.month - 1, activity.dueDate.day);
+                            const diffHours = (dueDate - now) / (1000 * 60 * 60);
+
+                            // Se faltar entre 0 e 24 horas e ainda não avisou
+                            if (diffHours > 0 && diffHours <= 24 && !reminderCache.has(activity.id)) {
+                                const message = formatReminderMessage({
+                                    title: activity.title,
+                                    courseName: course.name,
+                                    dueDate: `${activity.dueDate.day}/${activity.dueDate.month}/${activity.dueDate.year}`,
+                                    link: activity.alternateLink
+                                });
+
+                                if (notificationNumber) {
+                                    await sock.sendMessage(notificationNumber, { text: message });
+                                    reminderCache.add(activity.id);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('❌ Erro no loop de lembretes:', err.message);
+            }
+        }, 60 * 60 * 1000);
+
         // Lidar com comandos recebidos
         sock.ev.on('messages.upsert', async (m) => {
             const msg = m.messages[0];
@@ -81,19 +118,81 @@ async function start() {
 
             const from = msg.key.remoteJid;
 
+            // Comando /id para obter JID e LID
+            if (text === '/id') {
+                console.log(`[Comando] /id solicitado por ${from}`);
+                const isGroup = from.endsWith('@g.us');
+                const response = `*🆔 INFORMAÇÕES DE IDENTIFICAÇÃO*\n\n` +
+                                 `*Seu ID/LID:* \`${msg.key.participant || from}\`\n` +
+                                 `*ID do Chat:* \`${from}\`\n` +
+                                 `*Tipo:* ${isGroup ? 'Grupo' : 'Privado'}\n\n` +
+                                 `_Mande o ID do Chat para o desenvolvedor configurar as notificações._`;
+                await sock.sendMessage(from, { text: response });
+                return;
+            }
+
             if (text === '!ping') {
                 console.log(`[Comando] !ping recebido de ${from}`);
                 await sock.sendMessage(from, { text: '🏓 *Pong!*\n\nO bot está online e monitorando o Google Classroom com sucesso.' });
             }
             
-            else if (text === '!help' || text === '!ajuda') {
-                console.log(`[Comando] !help recebido de ${from}`);
+            else if (text === '!help' || text === '!ajuda' || text === '!menu') {
+                console.log(`[Comando] !menu recebido de ${from}`);
+                const menuText = `*╔══════════════════╗*
+*║      🤖 CLASSROOM BOT      ║*
+*╚══════════════════╝*
+
+*👋 Olá! Eu sou o seu assistente do Google Classroom.*
+
+*📂 COMANDOS DISPONÍVEIS:*
+
+*🚀 GERAL*
+> *!menu* - Abre este menu
+> *!ping* - Verifica o status do bot
+> *!id* - Mostra o ID deste chat/grupo
+
+*📚 CLASSROOM*
+> *!check* - Força verificação de atividades
+> *!atividades* - Lista atividades pendentes
+
+*📢 ADMINISTRAÇÃO*
+> *!bc [mensagem]* - Envia um aviso para todos
+
+*⏰ LEMBRETES*
+> O bot avisa automaticamente *24h antes* do prazo de entrega de cada atividade!
+
+*════════════════════*
+_Desenvolvido por Manus AI_`;
+
                 await sock.sendMessage(from, { 
-                    text: '*🤖 Classroom Bot - Comandos*\n\n' +
-                          '*!ping* - Verifica se o bot está online\n' +
-                          '*!check* - Força uma verificação de atividades agora\n' +
-                          '*!help* - Mostra esta lista de comandos' 
+                    image: { url: 'https://i.imgur.com/your-image-url.png' }, // Placeholder, o usuário deve subir a imagem ou usaremos a local
+                    caption: menuText,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: 'CLASSROOM BOT SYSTEM',
+                            body: 'Monitoramento em Tempo Real',
+                            mediaType: 1,
+                            thumbnailUrl: 'https://i.imgur.com/your-image-url.png',
+                            sourceUrl: 'https://github.com/gustaxseven/classroom-whatsapp-bot'
+                        }
+                    }
                 });
+            }
+
+            else if (text.startsWith('!bc ')) {
+                const broadcastMsg = text.replace('!bc ', '').trim();
+                if (!broadcastMsg) return;
+                
+                console.log(`[Broadcast] Enviando mensagem: ${broadcastMsg}`);
+                await sock.sendMessage(from, { text: '📢 *Enviando Broadcast...*' });
+                
+                // Por enquanto envia para o número de notificação configurado
+                if (notificationNumber) {
+                    await sock.sendMessage(notificationNumber, { 
+                        text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado via Classroom Bot_` 
+                    });
+                    await sock.sendMessage(from, { text: '✅ *Broadcast enviado com sucesso!*' });
+                }
             }
 
             else if (text === '!check' || text === '!verificar') {
