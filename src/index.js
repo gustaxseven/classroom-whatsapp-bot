@@ -127,8 +127,13 @@ async function start() {
             ).trim().toLowerCase();
 
             const from = msg.key.remoteJid;
+            const senderLid = msg.key.participant || from;
+            const ownerLid = process.env.OWNER_LID;
 
-            // Comando /id para obter JID e LID
+            // Função para verificar se é o dono
+            const isOwner = senderLid === ownerLid;
+
+            // Comando /id para obter JID e LID (Livre para todos para facilitar configuração)
             if (text === '/id') {
                 console.log(`[Comando] /id solicitado por ${from}`);
                 const isGroup = from.endsWith('@g.us');
@@ -147,6 +152,7 @@ async function start() {
             }
             
             else if (text === '!help' || text === '!ajuda' || text === '!menu' || text === '/menu') {
+                if (!isOwner) return; // Apenas o dono pode ver o menu
                 console.log(`[Comando] Menu solicitado por ${from}`);
                 
                 const menuText = `*╔══════════════════╗*
@@ -172,8 +178,7 @@ async function start() {
 *⏰ LEMBRETES*
 > O bot avisa automaticamente *24h antes* do prazo de entrega de cada atividade!
 
-*════════════════════*
-_Desenvolvido por Manus AI_`;
+*════════════════════*`;
 
                 const menuImageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663618494595/fSWSrzmMEkGGRkqE.png';
 
@@ -193,6 +198,7 @@ _Desenvolvido por Manus AI_`;
             }
 
             else if (text.startsWith('!bc ')) {
+                if (!isOwner) return; // Apenas o dono pode fazer broadcast
                 const broadcastMsg = text.replace('!bc ', '').trim();
                 if (!broadcastMsg) return;
                 
@@ -210,6 +216,7 @@ _Desenvolvido por Manus AI_`;
             }
 
             else if (text === '!check' || text === '!verificar') {
+                if (!isOwner) return; // Apenas o dono pode forçar check
                 console.log(`[Comando] !check recebido de ${from}`);
                 await sock.sendMessage(from, { text: '🔍 *Iniciando verificação manual...*' });
                 
