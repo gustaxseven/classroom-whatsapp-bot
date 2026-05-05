@@ -65,27 +65,48 @@ async function start() {
             const msg = m.messages[0];
             if (!msg.message || msg.key.fromMe) return;
 
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            // Extração robusta de texto
+            const text = (
+                msg.message.conversation || 
+                msg.message.extendedTextMessage?.text || 
+                msg.message.imageMessage?.caption || 
+                msg.message.videoMessage?.caption || 
+                ""
+            ).trim().toLowerCase();
+
             const from = msg.key.remoteJid;
 
             if (text === '!ping') {
-                await sock.sendMessage(from, { text: '🏓 Pong! O bot está online e monitorando o Classroom.' });
+                console.log(`[Comando] !ping recebido de ${from}`);
+                await sock.sendMessage(from, { text: '🏓 *Pong!*\n\nO bot está online e monitorando o Google Classroom com sucesso.' });
             }
             
-            if (text === '!help') {
-                await sock.sendMessage(from, { text: '*Comandos Disponíveis:*\n\n!ping - Verifica se o bot está online\n!check - Força uma verificação imediata' });
+            else if (text === '!help' || text === '!ajuda') {
+                console.log(`[Comando] !help recebido de ${from}`);
+                await sock.sendMessage(from, { 
+                    text: '*🤖 Classroom Bot - Comandos*\n\n' +
+                          '*!ping* - Verifica se o bot está online\n' +
+                          '*!check* - Força uma verificação de atividades agora\n' +
+                          '*!help* - Mostra esta lista de comandos' 
+                });
             }
 
-            if (text === '!check') {
-                await sock.sendMessage(from, { text: '🔍 Verificando atividades agora...' });
-                const activities = await checkNewActivities(auth);
-                if (activities.length === 0) {
-                    await sock.sendMessage(from, { text: '✅ Nenhuma atividade nova detectada no momento.' });
-                } else {
-                    await sock.sendMessage(from, { text: `📢 Encontradas ${activities.length} novas atividades! Enviando...` });
-                    for (const activity of activities) {
-                        await sock.sendMessage(from, { text: formatActivityMessage(activity) });
+            else if (text === '!check' || text === '!verificar') {
+                console.log(`[Comando] !check recebido de ${from}`);
+                await sock.sendMessage(from, { text: '🔍 *Iniciando verificação manual...*' });
+                
+                try {
+                    const activities = await checkNewActivities(auth);
+                    if (activities.length === 0) {
+                        await sock.sendMessage(from, { text: '✅ Nenhuma atividade nova detectada no momento.' });
+                    } else {
+                        await sock.sendMessage(from, { text: `📢 *Encontradas ${activities.length} novas atividades!* Enviando detalhes...` });
+                        for (const activity of activities) {
+                            await sock.sendMessage(from, { text: formatActivityMessage(activity) });
+                        }
                     }
+                } catch (err) {
+                    await sock.sendMessage(from, { text: '❌ Erro ao verificar atividades. Tente novamente em instantes.' });
                 }
             }
         });
