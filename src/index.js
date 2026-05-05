@@ -37,23 +37,30 @@ async function start() {
                         const message = formatActivityMessage(activity);
                         
                         if (notificationNumber) {
-                            const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
-                            const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
+                            try {
+                                const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
+                                const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
 
-                            await sock.sendMessage(notificationNumber, { 
-                                text: `@todos\n\n${message}`,
-                                mentions: participants,
-                                contextInfo: {
-                                    externalAdReply: {
-                                        title: activity.courseName,
-                                        body: `Professor(a): ${activity.teacherName}`,
-                                        mediaType: 1,
-                                        renderLargerThumbnail: true,
-                                        thumbnailUrl: activity.teacherPhoto,
-                                        sourceUrl: activity.link
+                                await sock.sendMessage(notificationNumber, { 
+                                    text: `@todos\n\n${message}`,
+                                    mentions: participants,
+                                    contextInfo: {
+                                        externalAdReply: {
+                                            title: activity.courseName,
+                                            body: `Professor(a): ${activity.teacherName}`,
+                                            mediaType: 1,
+                                            renderLargerThumbnail: true,
+                                            thumbnailUrl: activity.teacherPhoto,
+                                            sourceUrl: activity.link
+                                        }
                                     }
-                                }
-                            });
+                                });
+                            } catch (sendErr) {
+                                console.error(`⚠️ Falha ao enviar notificação (tentando novamente em 5s):`, sendErr.message);
+                                await new Promise(resolve => setTimeout(resolve, 5000));
+                                // Tenta enviar novamente uma vez
+                                await sock.sendMessage(notificationNumber, { text: `@todos\n\n${message}` });
+                            }
                         }
                     }
                 }
