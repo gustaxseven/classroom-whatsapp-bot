@@ -37,8 +37,12 @@ async function start() {
                         const message = formatActivityMessage(activity);
                         
                         if (notificationNumber) {
+                            const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
+                            const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
+
                             await sock.sendMessage(notificationNumber, { 
-                                text: message,
+                                text: `@todos\n\n${message}`,
+                                mentions: participants,
                                 contextInfo: {
                                     externalAdReply: {
                                         title: activity.courseName,
@@ -90,7 +94,13 @@ async function start() {
                                 });
 
                                 if (notificationNumber) {
-                                    await sock.sendMessage(notificationNumber, { text: message });
+                                    const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
+                                    const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
+
+                                    await sock.sendMessage(notificationNumber, { 
+                                        text: `@todos\n\n${message}`,
+                                        mentions: participants
+                                    });
                                     reminderCache.add(activity.id);
                                 }
                             }
@@ -189,12 +199,13 @@ _Desenvolvido por Manus AI_`;
                 console.log(`[Broadcast] Enviando mensagem: ${broadcastMsg}`);
                 await sock.sendMessage(from, { text: '📢 *Enviando Broadcast...*' });
                 
-                // Por enquanto envia para o número de notificação configurado
+                // Envia para o grupo de notificações configurado
                 if (notificationNumber) {
                     await sock.sendMessage(notificationNumber, { 
-                        text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado via Classroom Bot_` 
+                        text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
+                        mentions: [msg.key.participant || from]
                     });
-                    await sock.sendMessage(from, { text: '✅ *Broadcast enviado com sucesso!*' });
+                    await sock.sendMessage(from, { text: '✅ *Broadcast enviado para o grupo com sucesso!*' });
                 }
             }
 
