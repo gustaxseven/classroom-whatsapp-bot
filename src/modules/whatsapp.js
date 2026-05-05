@@ -62,10 +62,11 @@ async function connectToWhatsApp() {
             }
         } else if (connection === 'open') {
             console.log('Conexão com WhatsApp estabelecida com sucesso!');
-            const notificationNumber = process.env.NOTIFICATION_NUMBER;
-            if (notificationNumber) {
-                await sock.sendMessage(notificationNumber, { 
-                    text: '✅ *Bot Classroom Online!*\n\nO bot foi conectado com sucesso e já está monitorando suas atividades do Google Classroom.' 
+            // Enviar mensagem de confirmação apenas para o DONO (Privado)
+            const ownerLid = process.env.OWNER_LID;
+            if (ownerLid) {
+                await sock.sendMessage(ownerLid, { 
+                    text: '✅ *Classroom Bot Online!*\n\nO bot foi conectado com sucesso e já está monitorando suas atividades do Google Classroom.' 
                 });
             }
         }
