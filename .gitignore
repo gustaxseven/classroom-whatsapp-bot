@@ -1,0 +1,7 @@
+node_modules/
+.env
+config/auth_info/
+config/token.json
+config/cache.json
+package-lock.json
+.DS_Store
