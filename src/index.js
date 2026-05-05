@@ -16,19 +16,16 @@ async function start() {
         const sock = await connectToWhatsApp();
 
         // 3. Configurar Monitoramento
-        const intervalMinutes = parseInt(process.env.CHECK_INTERVAL_MINUTES) || 5;
         const notificationNumber = process.env.NOTIFICATION_NUMBER;
 
         if (!notificationNumber) {
             console.warn('⚠️ NOTIFICATION_NUMBER não definido. O bot não saberá para onde enviar as notificações automáticas.');
         }
 
-        console.log(`🕒 Monitoramento iniciado. Verificando a cada ${intervalMinutes} minutos.`);
+        console.log(`🕒 Monitoramento automático ativado. Verificando a cada 1 minuto.`);
 
-        // Loop de verificação (Intervalo reduzido para monitoramento quase em tempo real)
-        const checkInterval = 60 * 1000; // 1 minuto (mínimo recomendado para evitar bloqueio de API)
-        
-        setInterval(async () => {
+        // Função de verificação
+        const performCheck = async () => {
             try {
                 console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
                 const newActivities = await checkNewActivities(auth);
@@ -47,7 +44,7 @@ async function start() {
                                         title: activity.courseName,
                                         body: `Professor(a): ${activity.teacherName}`,
                                         mediaType: 1,
-                                        renderLargerThumbnail: true, // Tenta renderizar a foto maior
+                                        renderLargerThumbnail: true,
                                         thumbnailUrl: activity.teacherPhoto,
                                         sourceUrl: activity.link
                                     }
@@ -59,7 +56,14 @@ async function start() {
             } catch (err) {
                 console.error('❌ Erro durante a verificação de atividades:', err.message);
             }
-        }, checkInterval);
+        };
+
+        // Verificação imediata ao iniciar
+        performCheck();
+
+        // Loop de verificação (Intervalo de 1 minuto)
+        const checkInterval = 60 * 1000; 
+        setInterval(performCheck, checkInterval);
 
         // Lidar com comandos recebidos
         sock.ev.on('messages.upsert', async (m) => {
