@@ -55,31 +55,43 @@ async function checkNewActivities(auth) {
     const newActivities = [];
 
     for (const course of courses) {
-        const activities = await getCourseWork(auth, course.id);
-        
-        for (const activity of activities) {
-            if (!activityCache.has(activity.id)) {
-                const teacher = await getTeacherInfo(auth, course.id, activity.creatorUserId);
-                
-                const formattedActivity = {
-                    id: activity.id,
-                    title: activity.title,
-                    courseName: course.name,
-                    teacherName: teacher.name.fullName,
-                    teacherPhoto: teacher.photoUrl,
-                    description: activity.description || 'Sem descrição.',
-                    dueDate: activity.dueDate ? `${activity.dueDate.day}/${activity.dueDate.month}/${activity.dueDate.year}` : 'Sem data de entrega',
-                    link: activity.alternateLink
-                };
+        try {
+            const activities = await getCourseWork(auth, course.id);
+            
+            for (const activity of activities) {
+                // Se o ID não estiver no cache, é uma atividade nova
+                if (!activityCache.has(activity.id)) {
+                    const teacher = await getTeacherInfo(auth, course.id, activity.creatorUserId);
+                    
+                    // Normalizar a URL da foto do professor (adicionar https: se faltar)
+                    let photoUrl = teacher.photoUrl;
+                    if (photoUrl && photoUrl.startsWith('//')) {
+                        photoUrl = 'https:' + photoUrl;
+                    }
 
-                newActivities.push(formattedActivity);
-                activityCache.add(activity.id);
+                    const formattedActivity = {
+                        id: activity.id,
+                        title: activity.title,
+                        courseName: course.name,
+                        teacherName: teacher.name.fullName,
+                        teacherPhoto: photoUrl || 'https://www.gstatic.com/images/branding/product/2x/classroom_48dp.png',
+                        description: activity.description || 'Sem descrição.',
+                        dueDate: activity.dueDate ? `${activity.dueDate.day}/${activity.dueDate.month}/${activity.dueDate.year}` : 'Sem data de entrega',
+                        link: activity.alternateLink
+                    };
+
+                    newActivities.push(formattedActivity);
+                    activityCache.add(activity.id);
+                }
             }
+        } catch (e) {
+            console.error(`Erro ao verificar curso ${course.name}:`, e.message);
         }
     }
 
     if (newActivities.length > 0) {
         saveCache();
+        console.log(`[Cache] Salvas ${newActivities.length} novas atividades.`);
     }
 
     return newActivities;

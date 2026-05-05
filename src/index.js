@@ -25,10 +25,12 @@ async function start() {
 
         console.log(`🕒 Monitoramento iniciado. Verificando a cada ${intervalMinutes} minutos.`);
 
-        // Loop de verificação
+        // Loop de verificação (Intervalo reduzido para monitoramento quase em tempo real)
+        const checkInterval = 60 * 1000; // 1 minuto (mínimo recomendado para evitar bloqueio de API)
+        
         setInterval(async () => {
             try {
-                console.log('🔍 Verificando novas atividades...');
+                console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
                 const newActivities = await checkNewActivities(auth);
 
                 if (newActivities.length > 0) {
@@ -43,22 +45,21 @@ async function start() {
                                 contextInfo: {
                                     externalAdReply: {
                                         title: activity.courseName,
-                                        body: `Prof: ${activity.teacherName}`,
+                                        body: `Professor(a): ${activity.teacherName}`,
                                         mediaType: 1,
-                                        thumbnailUrl: activity.teacherPhoto || 'https://www.gstatic.com/images/branding/product/2x/classroom_48dp.png',
+                                        renderLargerThumbnail: true, // Tenta renderizar a foto maior
+                                        thumbnailUrl: activity.teacherPhoto,
                                         sourceUrl: activity.link
                                     }
                                 }
                             });
                         }
                     }
-                } else {
-                    console.log('✅ Nenhuma atividade nova.');
                 }
             } catch (err) {
                 console.error('❌ Erro durante a verificação de atividades:', err.message);
             }
-        }, intervalMinutes * 60 * 1000);
+        }, checkInterval);
 
         // Lidar com comandos recebidos
         sock.ev.on('messages.upsert', async (m) => {
