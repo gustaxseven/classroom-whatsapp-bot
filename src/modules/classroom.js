@@ -95,7 +95,8 @@ async function checkNewActivities(auth) {
                         teacherPhoto: photoUrl || 'https://www.gstatic.com/images/branding/product/2x/classroom_48dp.png',
                         description: activity.description || 'Sem descrição.',
                         dueDate: activity.dueDate ? `${activity.dueDate.day}/${activity.dueDate.month}/${activity.dueDate.year}` : 'Sem data de entrega',
-                        link: activity.alternateLink
+                        link: activity.alternateLink,
+                        materials: activity.materials || []
                     };
 
                     newActivities.push(formattedActivity);
