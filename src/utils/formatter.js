@@ -1,4 +1,6 @@
 function formatActivityMessage(activity) {
+    const agendaLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(activity.title)}&details=${encodeURIComponent(activity.description)}&location=${encodeURIComponent(activity.link)}`;
+
     return `*📚 NOVA ATIVIDADE DETECTADA!*
 
 *📖 Matéria:* ${activity.courseName}
@@ -12,6 +14,9 @@ ${activity.description.length > 500 ? activity.description.substring(0, 500) + '
 
 *🔗 Link para acessar:*
 ${activity.link}
+
+*📅 Adicionar à Agenda:*
+${agendaLink}
 
 _Bot Classroom Notifier_ 🤖`;
 }

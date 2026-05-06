@@ -1,6 +1,6 @@
 const { connectToWhatsApp } = require('./modules/whatsapp');
 const { authorize } = require('./modules/googleAuth');
-const { checkNewActivities, listCourses, getCourseWork } = require('./modules/classroom');
+const { checkNewActivities, listCourses, getCourseWork, getCourseMaterials, getStudentSubmissions } = require('./modules/classroom');
 const { formatActivityMessage, formatReminderMessage } = require('./utils/formatter');
 require('dotenv').config();
 
@@ -8,23 +8,13 @@ async function start() {
     console.log('🚀 Iniciando Classroom WhatsApp Bot...');
 
     try {
-        // 1. Autenticar no Google
         const auth = await authorize();
         console.log('✅ Autenticação Google Classroom OK!');
 
-        // 2. Conectar ao WhatsApp
         const sock = await connectToWhatsApp();
-
-        // 3. Configurar Monitoramento
         const notificationNumber = process.env.NOTIFICATION_NUMBER;
 
-        if (!notificationNumber) {
-            console.warn('⚠️ NOTIFICATION_NUMBER não definido. O bot não saberá para onde enviar as notificações automáticas.');
-        }
-
-        console.log(`🕒 Monitoramento automático ativado. Verificando a cada 1 minuto.`);
-
-        // Função de verificação
+        // Função de verificação periódica
         const performCheck = async () => {
             try {
                 console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
@@ -58,7 +48,6 @@ async function start() {
                             } catch (sendErr) {
                                 console.error(`⚠️ Falha ao enviar notificação (tentando novamente em 5s):`, sendErr.message);
                                 await new Promise(resolve => setTimeout(resolve, 5000));
-                                // Tenta enviar novamente uma vez
                                 await sock.sendMessage(notificationNumber, { text: `@todos\n\n${message}` });
                             }
                         }
@@ -76,6 +65,38 @@ async function start() {
         const checkInterval = 60 * 1000; 
         setInterval(performCheck, checkInterval);
 
+        // Loop de Resumo Semanal (Toda segunda-feira às 08:00)
+        setInterval(async () => {
+            const now = new Date();
+            if (now.getDay() === 1 && now.getHours() === 8) {
+                try {
+                    console.log('📊 Gerando resumo semanal...');
+                    const courses = await listCourses(auth);
+                    let summary = `*📊 RESUMO SEMANAL DE ATIVIDADES*\n\n`;
+                    let hasActivities = false;
+
+                    for (const course of courses) {
+                        const activities = await getCourseWork(auth, course.id);
+                        const pending = activities.filter(a => a.dueDate);
+                        if (pending.length > 0) {
+                            summary += `*📘 ${course.name}*\n`;
+                            pending.forEach(a => {
+                                summary += `> • ${a.title} (${a.dueDate.day}/${a.dueDate.month})\n`;
+                            });
+                            summary += `\n`;
+                            hasActivities = true;
+                        }
+                    }
+
+                    if (hasActivities && notificationNumber) {
+                        await sock.sendMessage(notificationNumber, { text: summary });
+                    }
+                } catch (err) {
+                    console.error('❌ Erro no resumo semanal:', err.message);
+                }
+            }
+        }, 60 * 60 * 1000);
+
         // Loop de Lembretes (Verifica a cada 1 hora)
         const reminderCache = new Set();
         setInterval(async () => {
@@ -91,7 +112,6 @@ async function start() {
                             const dueDate = new Date(activity.dueDate.year, activity.dueDate.month - 1, activity.dueDate.day);
                             const diffHours = (dueDate - now) / (1000 * 60 * 60);
 
-                            // Se faltar entre 0 e 24 horas e ainda não avisou
                             if (diffHours > 0 && diffHours <= 24 && !reminderCache.has(activity.id)) {
                                 const message = formatReminderMessage({
                                     title: activity.title,
@@ -124,7 +144,6 @@ async function start() {
             const msg = m.messages[0];
             if (!msg.message || msg.key.fromMe) return;
 
-            // Extração robusta de texto
             const text = (
                 msg.message.conversation || 
                 msg.message.extendedTextMessage?.text || 
@@ -136,11 +155,8 @@ async function start() {
             const from = msg.key.remoteJid;
             const senderLid = msg.key.participant || from;
             const ownerLid = process.env.OWNER_LID;
-
-            // Função para verificar se é o dono
             const isOwner = senderLid === ownerLid;
 
-            // Comando /id para obter JID e LID (Livre para todos para facilitar configuração)
             if (text === '/id') {
                 console.log(`[Comando] /id solicitado por ${from}`);
                 const isGroup = from.endsWith('@g.us');
@@ -159,7 +175,7 @@ async function start() {
             }
             
             else if (text === '!help' || text === '!ajuda' || text === '!menu' || text === '/menu') {
-                if (!isOwner) return; // Apenas o dono pode ver o menu
+                if (!isOwner) return;
                 console.log(`[Comando] Menu solicitado por ${from}`);
                 
                 const menuText = `*╔══════════════════╗*
@@ -178,6 +194,8 @@ async function start() {
 *📚 CLASSROOM*
 > *!check* - Força verificação de atividades
 > *!atividades* - Lista atividades pendentes
+> *!notas* - Ver suas notas recentes
+> *!materiais* - Ver materiais de estudo
 
 *📢 ADMINISTRAÇÃO*
 > *!bc [mensagem]* - Envia um aviso para todos
@@ -205,14 +223,13 @@ async function start() {
             }
 
             else if (text.startsWith('!bc ')) {
-                if (!isOwner) return; // Apenas o dono pode fazer broadcast
+                if (!isOwner) return;
                 const broadcastMsg = text.replace('!bc ', '').trim();
                 if (!broadcastMsg) return;
                 
                 console.log(`[Broadcast] Enviando mensagem: ${broadcastMsg}`);
                 await sock.sendMessage(from, { text: '📢 *Enviando Broadcast...*' });
                 
-                // Envia para o grupo de notificações configurado
                 if (notificationNumber) {
                     await sock.sendMessage(notificationNumber, { 
                         text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
@@ -223,22 +240,68 @@ async function start() {
             }
 
             else if (text === '!check' || text === '!verificar') {
-                if (!isOwner) return; // Apenas o dono pode forçar check
+                if (!isOwner) return;
                 console.log(`[Comando] !check recebido de ${from}`);
                 await sock.sendMessage(from, { text: '🔍 *Iniciando verificação manual...*' });
                 
                 try {
                     const activities = await checkNewActivities(auth);
                     if (activities.length === 0) {
-                        await sock.sendMessage(from, { text: '✅ Nenhuma atividade nova detectada no momento.' });
-                    } else {
-                        await sock.sendMessage(from, { text: `📢 *Encontradas ${activities.length} novas atividades!* Enviando detalhes...` });
-                        for (const activity of activities) {
-                            await sock.sendMessage(from, { text: formatActivityMessage(activity) });
-                        }
+                        await sock.sendMessage(from, { text: '✅ Nenhuma atividade nova encontrada no momento.' });
                     }
                 } catch (err) {
-                    await sock.sendMessage(from, { text: '❌ Erro ao verificar atividades. Tente novamente em instantes.' });
+                    await sock.sendMessage(from, { text: `❌ Erro ao verificar: ${err.message}` });
+                }
+            }
+
+            else if (text === '!materiais') {
+                if (!isOwner) return;
+                console.log(`[Comando] !materiais solicitado por ${from}`);
+                await sock.sendMessage(from, { text: '📂 *Buscando materiais recentes...*' });
+                
+                try {
+                    const courses = await listCourses(auth);
+                    let response = `*📂 MATERIAIS DE ESTUDO RECENTES*\n\n`;
+                    for (const course of courses) {
+                        const materials = await getCourseMaterials(auth, course.id);
+                        if (materials.length > 0) {
+                            response += `*📘 ${course.name}*\n`;
+                            materials.forEach(m => {
+                                response += `> • ${m.title}\n> 🔗 ${m.alternateLink}\n\n`;
+                            });
+                        }
+                    }
+                    await sock.sendMessage(from, { text: response });
+                } catch (err) {
+                    await sock.sendMessage(from, { text: `❌ Erro ao buscar materiais: ${err.message}` });
+                }
+            }
+
+            else if (text === '!notas') {
+                if (!isOwner) return;
+                console.log(`[Comando] !notas solicitado por ${from}`);
+                await sock.sendMessage(from, { text: '📊 *Buscando suas notas...*' });
+                
+                try {
+                    const courses = await listCourses(auth);
+                    let response = `*📊 SUAS NOTAS RECENTES*\n\n`;
+                    for (const course of courses) {
+                        const activities = await getCourseWork(auth, course.id);
+                        let courseGrades = "";
+                        for (const activity of activities) {
+                            const submissions = await getStudentSubmissions(auth, course.id, activity.id);
+                            const graded = submissions.find(s => s.assignedGrade);
+                            if (graded) {
+                                courseGrades += `> • ${activity.title}: *${graded.assignedGrade}/${activity.maxPoints}*\n`;
+                            }
+                        }
+                        if (courseGrades) {
+                            response += `*📘 ${course.name}*\n${courseGrades}\n`;
+                        }
+                    }
+                    await sock.sendMessage(from, { text: response });
+                } catch (err) {
+                    await sock.sendMessage(from, { text: `❌ Erro ao buscar notas: ${err.message}` });
                 }
             }
         });

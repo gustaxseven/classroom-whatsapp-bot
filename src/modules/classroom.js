@@ -37,6 +37,24 @@ async function getCourseWork(auth, courseId) {
     return res.data.courseWork || [];
 }
 
+async function getCourseMaterials(auth, courseId) {
+    const classroom = google.classroom({ version: 'v1', auth });
+    const res = await classroom.courses.courseWorkMaterials.list({
+        courseId: courseId,
+        pageSize: 5,
+    });
+    return res.data.courseWorkMaterial || [];
+}
+
+async function getStudentSubmissions(auth, courseId, courseWorkId) {
+    const classroom = google.classroom({ version: 'v1', auth });
+    const res = await classroom.courses.courseWork.studentSubmissions.list({
+        courseId: courseId,
+        courseWorkId: courseWorkId,
+    });
+    return res.data.studentSubmissions || [];
+}
+
 async function getTeacherInfo(auth, courseId, teacherId) {
     const classroom = google.classroom({ version: 'v1', auth });
     try {
@@ -102,4 +120,10 @@ async function checkNewActivities(auth) {
     return newActivities;
 }
 
-module.exports = { checkNewActivities, listCourses, getCourseWork };
+module.exports = { 
+    checkNewActivities, 
+    listCourses, 
+    getCourseWork, 
+    getCourseMaterials, 
+    getStudentSubmissions 
+};
