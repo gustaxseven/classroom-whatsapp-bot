@@ -19,7 +19,7 @@ async function start() {
 
         // Função de verificação periódica
         const performCheck = async () => {
-            if (!botEnabled) return; // Se o bot estiver desligado, não faz nada
+            if (!botEnabled) return;
 
             try {
                 console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
@@ -185,32 +185,31 @@ async function start() {
                 if (!isOwner) return;
                 console.log(`[Comando] Menu solicitado por ${from}`);
                 
-                const menuText = `*╔══════════════════╗*
-*║      🤖 CLASSROOM BOT      ║*
-*╚══════════════════╝*
+                const menuText = `*─── 「 🤖 CLASSROOM BOT 」 ───*
 
-*👋 Olá! Eu sou o seu assistente do Google Classroom.*
+*👋 Olá, Administrador!*
+_Gerencie seu assistente escolar abaixo:_
 
-*📂 COMANDOS DISPONÍVEIS:*
+*🚀 COMANDOS DE SISTEMA*
+> */menu* - Exibe este painel
+> *!ping* - Status de conexão
+> */id* - Identificador do chat
 
-*🚀 GERAL*
-> */menu* - Abre este menu
-> *!ping* - Verifica o status do bot
-> */id* - Mostra o ID deste chat/grupo
+*📚 GOOGLE CLASSROOM*
+> *!check* - Forçar verificação
+> *!notas* - Ver notas recentes
 
-*📚 CLASSROOM*
-> *!check* - Força verificação de atividades
-> *!notas* - Ver suas notas recentes
-> *!materiais* - Ver materiais de estudo
+*📢 FERRAMENTAS ADMIN*
+> *!on* - Ativar notificações
+> *!off* - Pausar notificações
+> *!bc [texto]* - Aviso Geral
 
-*📢 ADMINISTRAÇÃO*
-> *!on* - Ativa as notificações
-> *!off* - Desativa as notificações
-> *!bc [mensagem]* - Envia um aviso para todos
+*📊 STATUS DO SISTEMA:*
+> *Monitoramento:* ${botEnabled ? '🟢 ATIVO' : '🔴 PAUSADO'}
+> *Grupo:* ${notificationNumber ? '✅ CONFIGURADO' : '❌ PENDENTE'}
 
-*⏰ STATUS ATUAL:* ${botEnabled ? '✅ LIGADO' : '❌ DESLIGADO'}
-
-*════════════════════*`;
+*──────────────────────*
+_Monitorando suas turmas em tempo real_`;
 
                 const menuImageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663618494595/fSWSrzmMEkGGRkqE.png';
 
@@ -219,8 +218,8 @@ async function start() {
                     caption: menuText,
                     contextInfo: {
                         externalAdReply: {
-                            title: 'CLASSROOM BOT SYSTEM',
-                            body: 'Monitoramento em Tempo Real',
+                            title: 'CLASSROOM BOT v2.0',
+                            body: 'Painel de Controle Administrativo',
                             mediaType: 1,
                             thumbnailUrl: menuImageUrl,
                             sourceUrl: 'https://github.com/gustaxseven/classroom-whatsapp-bot'
@@ -233,14 +232,14 @@ async function start() {
                 if (!isOwner) return;
                 botEnabled = true;
                 console.log('[Status] Bot ativado pelo dono.');
-                await sock.sendMessage(from, { text: '✅ *Notificações ativadas com sucesso!* O bot voltou a monitorar o Classroom.' });
+                await sock.sendMessage(from, { text: '🟢 *SISTEMA ATIVADO*\nAs notificações automáticas foram retomadas.' });
             }
 
             else if (text === '!off') {
                 if (!isOwner) return;
                 botEnabled = false;
                 console.log('[Status] Bot desativado pelo dono.');
-                await sock.sendMessage(from, { text: '❌ *Notificações desativadas!* O bot parou de monitorar o Classroom até ser ligado novamente.' });
+                await sock.sendMessage(from, { text: '🔴 *SISTEMA PAUSADO*\nO monitoramento automático foi interrompido.' });
             }
 
             else if (text.startsWith('!bc ')) {
@@ -256,56 +255,33 @@ async function start() {
                         text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
                         mentions: [msg.key.participant || from]
                     });
-                    await sock.sendMessage(from, { text: '✅ *Broadcast enviado para o grupo com sucesso!*' });
+                    await sock.sendMessage(from, { text: '✅ *Broadcast enviado com sucesso!*' });
                 }
             }
 
             else if (text === '!check' || text === '!verificar') {
                 if (!isOwner) return;
                 if (!botEnabled) {
-                    await sock.sendMessage(from, { text: '⚠️ O bot está desligado. Use `!on` para ligar antes de verificar.' });
+                    await sock.sendMessage(from, { text: '⚠️ O bot está pausado. Use `!on` para ativar.' });
                     return;
                 }
                 console.log(`[Comando] !check recebido de ${from}`);
-                await sock.sendMessage(from, { text: '🔍 *Iniciando verificação manual...*' });
+                await sock.sendMessage(from, { text: '🔍 *Verificando Classroom...*' });
                 
                 try {
                     const activities = await checkNewActivities(auth);
                     if (activities.length === 0) {
-                        await sock.sendMessage(from, { text: '✅ Nenhuma atividade nova encontrada no momento.' });
+                        await sock.sendMessage(from, { text: '✅ Nenhuma novidade encontrada.' });
                     }
                 } catch (err) {
-                    await sock.sendMessage(from, { text: `❌ Erro ao verificar: ${err.message}` });
-                }
-            }
-
-            else if (text === '!materiais') {
-                if (!isOwner) return;
-                console.log(`[Comando] !materiais solicitado por ${from}`);
-                await sock.sendMessage(from, { text: '📂 *Buscando materiais recentes...*' });
-                
-                try {
-                    const courses = await listCourses(auth);
-                    let response = `*📂 MATERIAIS DE ESTUDO RECENTES*\n\n`;
-                    for (const course of courses) {
-                        const materials = await getCourseMaterials(auth, course.id);
-                        if (materials.length > 0) {
-                            response += `*📘 ${course.name}*\n`;
-                            materials.forEach(m => {
-                                response += `> • ${m.title}\n> 🔗 ${m.alternateLink}\n\n`;
-                            });
-                        }
-                    }
-                    await sock.sendMessage(from, { text: response });
-                } catch (err) {
-                    await sock.sendMessage(from, { text: `❌ Erro ao buscar materiais: ${err.message}` });
+                    await sock.sendMessage(from, { text: `❌ Erro: ${err.message}` });
                 }
             }
 
             else if (text === '!notas') {
                 if (!isOwner) return;
                 console.log(`[Comando] !notas solicitado por ${from}`);
-                await sock.sendMessage(from, { text: '📊 *Buscando suas notas...*' });
+                await sock.sendMessage(from, { text: '📊 *Buscando notas...*' });
                 
                 try {
                     const courses = await listCourses(auth);
