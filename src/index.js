@@ -4,8 +4,8 @@ const { checkNewActivities, listCourses, getCourseWork, getCourseMaterials, getS
 const { formatActivityMessage, formatReminderMessage } = require('./utils/formatter');
 require('dotenv').config();
 
-// Estado global do bot (ligado/desligado)
-let botEnabled = true;
+// Estado global do bot (ligado/desligado apenas para grupos)
+let groupsEnabled = true;
 
 async function start() {
     console.log('🚀 Iniciando Classroom WhatsApp Bot...');
@@ -16,11 +16,10 @@ async function start() {
 
         const sock = await connectToWhatsApp();
         const notificationNumber = process.env.NOTIFICATION_NUMBER;
+        const ownerLid = process.env.OWNER_LID;
 
         // Função de verificação periódica
         const performCheck = async () => {
-            if (!botEnabled) return;
-
             try {
                 console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
                 const newActivities = await checkNewActivities(auth);
@@ -31,7 +30,13 @@ async function start() {
                     for (const activity of newActivities) {
                         const message = formatActivityMessage(activity);
                         
-                        if (notificationNumber) {
+                        // 1. Enviar para o Dono (Sempre)
+                        if (ownerLid) {
+                            await sock.sendMessage(ownerLid, { text: `*🔔 NOTIFICAÇÃO PRIVADA*\n\n${message}` });
+                        }
+
+                        // 2. Enviar para o Grupo (Se habilitado)
+                        if (notificationNumber && groupsEnabled) {
                             try {
                                 const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
                                 const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
@@ -51,9 +56,7 @@ async function start() {
                                     }
                                 });
                             } catch (sendErr) {
-                                console.error(`⚠️ Falha ao enviar notificação (tentando novamente em 5s):`, sendErr.message);
-                                await new Promise(resolve => setTimeout(resolve, 5000));
-                                await sock.sendMessage(notificationNumber, { text: `@todos\n\n${message}` });
+                                console.error(`⚠️ Falha ao enviar para o grupo:`, sendErr.message);
                             }
                         }
                     }
@@ -72,7 +75,6 @@ async function start() {
 
         // Loop de Resumo Semanal (Toda segunda-feira às 08:00)
         setInterval(async () => {
-            if (!botEnabled) return;
             const now = new Date();
             if (now.getDay() === 1 && now.getHours() === 8) {
                 try {
@@ -94,8 +96,9 @@ async function start() {
                         }
                     }
 
-                    if (hasActivities && notificationNumber) {
-                        await sock.sendMessage(notificationNumber, { text: summary });
+                    if (hasActivities) {
+                        if (ownerLid) await sock.sendMessage(ownerLid, { text: summary });
+                        if (notificationNumber && groupsEnabled) await sock.sendMessage(notificationNumber, { text: summary });
                     }
                 } catch (err) {
                     console.error('❌ Erro no resumo semanal:', err.message);
@@ -106,7 +109,6 @@ async function start() {
         // Loop de Lembretes (Verifica a cada 1 hora)
         const reminderCache = new Set();
         setInterval(async () => {
-            if (!botEnabled) return;
             try {
                 console.log('⏰ Verificando prazos de entrega (Lembretes 24h)...');
                 const courses = await listCourses(auth);
@@ -127,7 +129,9 @@ async function start() {
                                     link: activity.alternateLink
                                 });
 
-                                if (notificationNumber) {
+                                if (ownerLid) await sock.sendMessage(ownerLid, { text: `*⏰ LEMBRETE PRIVADO*\n\n${message}` });
+
+                                if (notificationNumber && groupsEnabled) {
                                     const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
                                     const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
 
@@ -135,8 +139,8 @@ async function start() {
                                         text: `@todos\n\n${message}`,
                                         mentions: participants
                                     });
-                                    reminderCache.add(activity.id);
                                 }
+                                reminderCache.add(activity.id);
                             }
                         }
                     }
@@ -161,34 +165,29 @@ async function start() {
 
             const from = msg.key.remoteJid;
             const senderLid = msg.key.participant || from;
-            const ownerLid = process.env.OWNER_LID;
             const isOwner = senderLid === ownerLid;
 
             if (text === '/id') {
-                console.log(`[Comando] /id solicitado por ${from}`);
                 const isGroup = from.endsWith('@g.us');
                 const response = `*🆔 INFORMAÇÕES DE IDENTIFICAÇÃO*\n\n` +
                                  `*Seu ID/LID:* \`${msg.key.participant || from}\`\n` +
                                  `*ID do Chat:* \`${from}\`\n` +
-                                 `*Tipo:* ${isGroup ? 'Grupo' : 'Privado'}\n\n` +
-                                 `_Mande o ID do Chat para o desenvolvedor configurar as notificações._`;
+                                 `*Tipo:* ${isGroup ? 'Grupo' : 'Privado'}`;
                 await sock.sendMessage(from, { text: response });
                 return;
             }
 
             if (text === '!ping') {
-                console.log(`[Comando] !ping recebido de ${from}`);
-                await sock.sendMessage(from, { text: '🏓 *Pong!*\n\nO bot está online e monitorando o Google Classroom com sucesso.' });
+                await sock.sendMessage(from, { text: '🏓 *Pong!*\n\nO bot está online e monitorando o Google Classroom.' });
             }
             
             else if (text === '!help' || text === '!ajuda' || text === '!menu' || text === '/menu') {
                 if (!isOwner) return;
-                console.log(`[Comando] Menu solicitado por ${from}`);
                 
                 const menuText = `*─── 「 🤖 CLASSROOM BOT 」 ───*
 
 *👋 Olá, Administrador!*
-_Gerencie seu assistente escolar abaixo:_
+_O bot continua ativo no seu PV mesmo se os grupos estiverem pausados._
 
 *🚀 COMANDOS DE SISTEMA*
 > */menu* - Exibe este painel
@@ -200,16 +199,15 @@ _Gerencie seu assistente escolar abaixo:_
 > *!notas* - Ver notas recentes
 
 *📢 FERRAMENTAS ADMIN*
-> *!on* - Ativar notificações
-> *!off* - Pausar notificações
-> *!bc [texto]* - Aviso Geral
+> *!on* - Ativar notificações nos GRUPOS
+> *!off* - Pausar notificações nos GRUPOS
+> *!bc [texto]* - Aviso Geral no Grupo
 
-*📊 STATUS DO SISTEMA:*
-> *Monitoramento:* ${botEnabled ? '🟢 ATIVO' : '🔴 PAUSADO'}
-> *Grupo:* ${notificationNumber ? '✅ CONFIGURADO' : '❌ PENDENTE'}
+*📊 STATUS DOS GRUPOS:*
+> *Notificações:* ${groupsEnabled ? '🟢 ATIVAS' : '🔴 PAUSADAS'}
 
 *──────────────────────*
-_Monitorando suas turmas em tempo real_`;
+_Monitoramento privado sempre ativo_`;
 
                 const menuImageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663618494595/fSWSrzmMEkGGRkqE.png';
 
@@ -218,7 +216,7 @@ _Monitorando suas turmas em tempo real_`;
                     caption: menuText,
                     contextInfo: {
                         externalAdReply: {
-                            title: 'CLASSROOM BOT v2.0',
+                            title: 'CLASSROOM BOT v2.5',
                             body: 'Painel de Controle Administrativo',
                             mediaType: 1,
                             thumbnailUrl: menuImageUrl,
@@ -230,49 +228,34 @@ _Monitorando suas turmas em tempo real_`;
 
             else if (text === '!on') {
                 if (!isOwner) return;
-                botEnabled = true;
-                console.log('[Status] Bot ativado pelo dono.');
-                await sock.sendMessage(from, { text: '🟢 *SISTEMA ATIVADO*\nAs notificações automáticas foram retomadas.' });
+                groupsEnabled = true;
+                await sock.sendMessage(from, { text: '🟢 *GRUPOS ATIVADOS*\nAs notificações no grupo foram retomadas.' });
             }
 
             else if (text === '!off') {
                 if (!isOwner) return;
-                botEnabled = false;
-                console.log('[Status] Bot desativado pelo dono.');
-                await sock.sendMessage(from, { text: '🔴 *SISTEMA PAUSADO*\nO monitoramento automático foi interrompido.' });
+                groupsEnabled = false;
+                await sock.sendMessage(from, { text: '🔴 *GRUPOS PAUSADOS*\nAs notificações agora serão enviadas apenas no seu PV.' });
             }
 
             else if (text.startsWith('!bc ')) {
                 if (!isOwner) return;
                 const broadcastMsg = text.replace('!bc ', '').trim();
-                if (!broadcastMsg) return;
+                if (!broadcastMsg || !notificationNumber) return;
                 
-                console.log(`[Broadcast] Enviando mensagem: ${broadcastMsg}`);
-                await sock.sendMessage(from, { text: '📢 *Enviando Broadcast...*' });
-                
-                if (notificationNumber) {
-                    await sock.sendMessage(notificationNumber, { 
-                        text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
-                        mentions: [msg.key.participant || from]
-                    });
-                    await sock.sendMessage(from, { text: '✅ *Broadcast enviado com sucesso!*' });
-                }
+                await sock.sendMessage(notificationNumber, { 
+                    text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
+                    mentions: [msg.key.participant || from]
+                });
+                await sock.sendMessage(from, { text: '✅ *Broadcast enviado com sucesso!*' });
             }
 
             else if (text === '!check' || text === '!verificar') {
                 if (!isOwner) return;
-                if (!botEnabled) {
-                    await sock.sendMessage(from, { text: '⚠️ O bot está pausado. Use `!on` para ativar.' });
-                    return;
-                }
-                console.log(`[Comando] !check recebido de ${from}`);
                 await sock.sendMessage(from, { text: '🔍 *Verificando Classroom...*' });
-                
                 try {
                     const activities = await checkNewActivities(auth);
-                    if (activities.length === 0) {
-                        await sock.sendMessage(from, { text: '✅ Nenhuma novidade encontrada.' });
-                    }
+                    if (activities.length === 0) await sock.sendMessage(from, { text: '✅ Nenhuma novidade encontrada.' });
                 } catch (err) {
                     await sock.sendMessage(from, { text: `❌ Erro: ${err.message}` });
                 }
@@ -280,9 +263,7 @@ _Monitorando suas turmas em tempo real_`;
 
             else if (text === '!notas') {
                 if (!isOwner) return;
-                console.log(`[Comando] !notas solicitado por ${from}`);
                 await sock.sendMessage(from, { text: '📊 *Buscando notas...*' });
-                
                 try {
                     const courses = await listCourses(auth);
                     let response = `*📊 SUAS NOTAS RECENTES*\n\n`;
@@ -292,13 +273,9 @@ _Monitorando suas turmas em tempo real_`;
                         for (const activity of activities) {
                             const submissions = await getStudentSubmissions(auth, course.id, activity.id);
                             const graded = submissions.find(s => s.assignedGrade);
-                            if (graded) {
-                                courseGrades += `> • ${activity.title}: *${graded.assignedGrade}/${activity.maxPoints}*\n`;
-                            }
+                            if (graded) courseGrades += `> • ${activity.title}: *${graded.assignedGrade}/${activity.maxPoints}*\n`;
                         }
-                        if (courseGrades) {
-                            response += `*📘 ${course.name}*\n${courseGrades}\n`;
-                        }
+                        if (courseGrades) response += `*📘 ${course.name}*\n${courseGrades}\n`;
                     }
                     await sock.sendMessage(from, { text: response });
                 } catch (err) {
