@@ -1,7 +1,7 @@
 const { connectToWhatsApp } = require('./modules/whatsapp');
 const { authorize } = require('./modules/googleAuth');
-const { checkNewActivities, listCourses, getCourseWork, getCourseMaterials, getStudentSubmissions } = require('./modules/classroom');
-const { formatActivityMessage, formatReminderMessage } = require('./utils/formatter');
+const { checkNewContent, listCourses, getCourseWork, getStudentSubmissions } = require('./modules/classroom');
+const { formatActivityMessage, formatMaterialMessage, formatReminderMessage } = require('./utils/formatter');
 require('dotenv').config();
 
 // Estado global do bot (ligado/desligado apenas para grupos)
@@ -21,18 +21,30 @@ async function start() {
         // Função de verificação periódica
         const performCheck = async () => {
             try {
-                console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
-                const newActivities = await checkNewActivities(auth);
+                console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novidades...`);
+                const newItems = await checkNewContent(auth);
 
-                if (newActivities.length > 0) {
-                    console.log(`📢 ${newActivities.length} novas atividades encontradas!`);
+                if (newItems.length > 0) {
+                    console.log(`📢 ${newItems.length} novas atualizações encontradas!`);
                     
-                    for (const activity of newActivities) {
-                        const message = formatActivityMessage(activity);
+                    for (const item of newItems) {
+                        const message = item.type === 'activity' ? formatActivityMessage(item) : formatMaterialMessage(item);
                         
-                        // 1. Enviar para o Dono (Sempre)
+                        // 1. Enviar para o Dono (Sempre com foto)
                         if (ownerLid) {
-                            await sock.sendMessage(ownerLid, { text: `*🔔 NOTIFICAÇÃO PRIVADA*\n\n${message}` });
+                            await sock.sendMessage(ownerLid, { 
+                                text: `*🔔 NOTIFICAÇÃO PRIVADA*\n\n${message}`,
+                                contextInfo: {
+                                    externalAdReply: {
+                                        title: item.courseName,
+                                        body: `Professor(a): ${item.teacherName}`,
+                                        mediaType: 1,
+                                        renderLargerThumbnail: true,
+                                        thumbnailUrl: item.teacherPhoto,
+                                        sourceUrl: item.link
+                                    }
+                                }
+                            });
                         }
 
                         // 2. Enviar para o Grupo (Se habilitado)
@@ -46,12 +58,12 @@ async function start() {
                                     mentions: participants,
                                     contextInfo: {
                                         externalAdReply: {
-                                            title: activity.courseName,
-                                            body: `Professor(a): ${activity.teacherName}`,
+                                            title: item.courseName,
+                                            body: `Professor(a): ${item.teacherName}`,
                                             mediaType: 1,
                                             renderLargerThumbnail: true,
-                                            thumbnailUrl: activity.teacherPhoto,
-                                            sourceUrl: activity.link
+                                            thumbnailUrl: item.teacherPhoto,
+                                            sourceUrl: item.link
                                         }
                                     }
                                 });
@@ -62,7 +74,7 @@ async function start() {
                     }
                 }
             } catch (err) {
-                console.error('❌ Erro durante a verificação de atividades:', err.message);
+                console.error('❌ Erro durante a verificação:', err.message);
             }
         };
 
@@ -207,7 +219,7 @@ _O bot continua ativo no seu PV mesmo se os grupos estiverem pausados._
 > *Notificações:* ${groupsEnabled ? '🟢 ATIVAS' : '🔴 PAUSADAS'}
 
 *──────────────────────*
-_Monitoramento privado sempre ativo_`;
+_Monitorando atividades e materiais_`;
 
                 const menuImageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663618494595/fSWSrzmMEkGGRkqE.png';
 
@@ -216,7 +228,7 @@ _Monitoramento privado sempre ativo_`;
                     caption: menuText,
                     contextInfo: {
                         externalAdReply: {
-                            title: 'CLASSROOM BOT v2.5',
+                            title: 'CLASSROOM BOT v2.6',
                             body: 'Painel de Controle Administrativo',
                             mediaType: 1,
                             thumbnailUrl: menuImageUrl,
@@ -254,8 +266,8 @@ _Monitoramento privado sempre ativo_`;
                 if (!isOwner) return;
                 await sock.sendMessage(from, { text: '🔍 *Verificando Classroom...*' });
                 try {
-                    const activities = await checkNewActivities(auth);
-                    if (activities.length === 0) await sock.sendMessage(from, { text: '✅ Nenhuma novidade encontrada.' });
+                    const newItems = await checkNewContent(auth);
+                    if (newItems.length === 0) await sock.sendMessage(from, { text: '✅ Nenhuma novidade encontrada.' });
                 } catch (err) {
                     await sock.sendMessage(from, { text: `❌ Erro: ${err.message}` });
                 }

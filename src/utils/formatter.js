@@ -1,6 +1,6 @@
 function formatActivityMessage(activity) {
     const agendaLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(activity.title)}&details=${encodeURIComponent(activity.description)}&location=${encodeURIComponent(activity.link)}`;
-
+    
     let materialsText = "";
     if (activity.materials && activity.materials.length > 0) {
         materialsText = "\n*📂 ANEXOS ENCONTRADOS:*\n";
@@ -32,6 +32,34 @@ ${agendaLink}
 _Bot Classroom Notifier_ 🤖`;
 }
 
+function formatMaterialMessage(material) {
+    let materialsText = "";
+    if (material.materials && material.materials.length > 0) {
+        materialsText = "\n*📂 CONTEÚDO DO MATERIAL:*\n";
+        material.materials.forEach(m => {
+            if (m.driveFile) materialsText += `> • 📄 ${m.driveFile.driveFile.title}\n>   🔗 ${m.driveFile.driveFile.alternateLink}\n`;
+            if (m.youtubeVideo) materialsText += `> • 🎥 Vídeo: ${m.youtubeVideo.title}\n>   🔗 ${m.youtubeVideo.alternateLink}\n`;
+            if (m.link) materialsText += `> • 🔗 Link: ${m.link.title}\n>   🔗 ${m.link.url}\n`;
+            if (m.form) materialsText += `> • 📝 Formulário: ${m.form.title}\n>   🔗 ${m.form.formUrl}\n`;
+        });
+    }
+
+    return `*📖 NOVO MATERIAL DE ESTUDO!*
+
+*📘 Matéria:* ${material.courseName}
+*👨‍🏫 Professor:* ${material.teacherName}
+
+*📝 Título:* ${material.title}
+
+*📋 Descrição:*
+${material.description.length > 500 ? material.description.substring(0, 500) + '...' : material.description}
+${materialsText}
+*🔗 Link para acessar:*
+${material.link}
+
+_Bot Classroom Notifier_ 🤖`;
+}
+
 function formatReminderMessage(activity) {
     return `*⏰ LEMBRETE DE ENTREGA (24H)*
 
@@ -47,4 +75,4 @@ ${activity.link}
 *💡 Dica:* Não deixe para a última hora! Boa sorte nos estudos. 🚀`;
 }
 
-module.exports = { formatActivityMessage, formatReminderMessage };
+module.exports = { formatActivityMessage, formatMaterialMessage, formatReminderMessage };
