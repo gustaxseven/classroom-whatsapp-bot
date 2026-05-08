@@ -4,6 +4,9 @@ const { checkNewActivities, listCourses, getCourseWork, getCourseMaterials, getS
 const { formatActivityMessage, formatReminderMessage } = require('./utils/formatter');
 require('dotenv').config();
 
+// Estado global do bot (ligado/desligado)
+let botEnabled = true;
+
 async function start() {
     console.log('🚀 Iniciando Classroom WhatsApp Bot...');
 
@@ -16,6 +19,8 @@ async function start() {
 
         // Função de verificação periódica
         const performCheck = async () => {
+            if (!botEnabled) return; // Se o bot estiver desligado, não faz nada
+
             try {
                 console.log(`🔍 [${new Date().toLocaleTimeString()}] Verificando novas atividades...`);
                 const newActivities = await checkNewActivities(auth);
@@ -67,6 +72,7 @@ async function start() {
 
         // Loop de Resumo Semanal (Toda segunda-feira às 08:00)
         setInterval(async () => {
+            if (!botEnabled) return;
             const now = new Date();
             if (now.getDay() === 1 && now.getHours() === 8) {
                 try {
@@ -100,6 +106,7 @@ async function start() {
         // Loop de Lembretes (Verifica a cada 1 hora)
         const reminderCache = new Set();
         setInterval(async () => {
+            if (!botEnabled) return;
             try {
                 console.log('⏰ Verificando prazos de entrega (Lembretes 24h)...');
                 const courses = await listCourses(auth);
@@ -193,15 +200,15 @@ async function start() {
 
 *📚 CLASSROOM*
 > *!check* - Força verificação de atividades
-> *!atividades* - Lista atividades pendentes
 > *!notas* - Ver suas notas recentes
 > *!materiais* - Ver materiais de estudo
 
 *📢 ADMINISTRAÇÃO*
+> *!on* - Ativa as notificações
+> *!off* - Desativa as notificações
 > *!bc [mensagem]* - Envia um aviso para todos
 
-*⏰ LEMBRETES*
-> O bot avisa automaticamente *24h antes* do prazo de entrega de cada atividade!
+*⏰ STATUS ATUAL:* ${botEnabled ? '✅ LIGADO' : '❌ DESLIGADO'}
 
 *════════════════════*`;
 
@@ -220,6 +227,20 @@ async function start() {
                         }
                     }
                 });
+            }
+
+            else if (text === '!on') {
+                if (!isOwner) return;
+                botEnabled = true;
+                console.log('[Status] Bot ativado pelo dono.');
+                await sock.sendMessage(from, { text: '✅ *Notificações ativadas com sucesso!* O bot voltou a monitorar o Classroom.' });
+            }
+
+            else if (text === '!off') {
+                if (!isOwner) return;
+                botEnabled = false;
+                console.log('[Status] Bot desativado pelo dono.');
+                await sock.sendMessage(from, { text: '❌ *Notificações desativadas!* O bot parou de monitorar o Classroom até ser ligado novamente.' });
             }
 
             else if (text.startsWith('!bc ')) {
@@ -241,6 +262,10 @@ async function start() {
 
             else if (text === '!check' || text === '!verificar') {
                 if (!isOwner) return;
+                if (!botEnabled) {
+                    await sock.sendMessage(from, { text: '⚠️ O bot está desligado. Use `!on` para ligar antes de verificar.' });
+                    return;
+                }
                 console.log(`[Comando] !check recebido de ${from}`);
                 await sock.sendMessage(from, { text: '🔍 *Iniciando verificação manual...*' });
                 
