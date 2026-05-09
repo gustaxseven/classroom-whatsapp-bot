@@ -17,6 +17,8 @@ async function start() {
         const sock = await connectToWhatsApp();
         const ownerLid = process.env.OWNER_LID;
 
+        console.log(`👑 Dono configurado: ${ownerLid}`);
+
         // Função para obter todos os grupos onde o bot está
         const getAllGroups = async () => {
             try {
@@ -201,12 +203,19 @@ async function start() {
 
             const from = msg.key.remoteJid;
             const senderLid = msg.key.participant || from;
-            const isOwner = senderLid === ownerLid;
+            
+            // LOG DE DEPURAÇÃO
+            console.log(`📩 Mensagem recebida: "${text}" de ${senderLid}`);
+
+            // Normalizar IDs para comparação (remover @lid/@s.whatsapp.net se necessário)
+            const normalizedSender = senderLid.split('@')[0];
+            const normalizedOwner = ownerLid ? ownerLid.split('@')[0] : null;
+            const isOwner = normalizedSender === normalizedOwner;
 
             if (text === '/id') {
                 const isGroup = from.endsWith('@g.us');
                 const response = `*🆔 INFORMAÇÕES DE IDENTIFICAÇÃO*\n\n` +
-                                 `*Seu ID/LID:* \`${msg.key.participant || from}\`\n` +
+                                 `*Seu ID/LID:* \`${senderLid}\`\n` +
                                  `*ID do Chat:* \`${from}\`\n` +
                                  `*Tipo:* ${isGroup ? 'Grupo' : 'Privado'}`;
                 await sock.sendMessage(from, { text: response });
@@ -218,7 +227,10 @@ async function start() {
             }
             
             else if (text === '!help' || text === '!ajuda' || text === '!menu' || text === '/menu') {
-                if (!isOwner) return;
+                if (!isOwner) {
+                    console.log(`🚫 Acesso negado ao menu para: ${senderLid}`);
+                    return;
+                }
                 
                 const menuText = `*─── 「 🤖 CLASSROOM BOT 」 ───*
 
@@ -247,19 +259,25 @@ _Monitorando atividades e materiais_`;
 
                 const menuImageUrl = 'https://files.manuscdn.com/user_upload_by_module/session_file/310519663618494595/fSWSrzmMEkGGRkqE.png';
 
-                await sock.sendMessage(from, { 
-                    image: { url: menuImageUrl },
-                    caption: menuText,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: 'CLASSROOM BOT v2.7',
-                            body: 'Painel de Controle Administrativo',
-                            mediaType: 1,
-                            thumbnailUrl: menuImageUrl,
-                            sourceUrl: 'https://github.com/gustaxseven/classroom-whatsapp-bot'
+                try {
+                    await sock.sendMessage(from, { 
+                        image: { url: menuImageUrl },
+                        caption: menuText,
+                        contextInfo: {
+                            externalAdReply: {
+                                title: 'CLASSROOM BOT v2.7',
+                                body: 'Painel de Controle Administrativo',
+                                mediaType: 1,
+                                thumbnailUrl: menuImageUrl,
+                                sourceUrl: 'https://github.com/gustaxseven/classroom-whatsapp-bot'
+                            }
                         }
-                    }
-                });
+                    });
+                } catch (menuErr) {
+                    console.error('❌ Erro ao enviar menu:', menuErr.message);
+                    // Fallback para texto se a imagem falhar
+                    await sock.sendMessage(from, { text: menuText });
+                }
             }
 
             else if (text === '!on') {
