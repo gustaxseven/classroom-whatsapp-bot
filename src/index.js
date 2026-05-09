@@ -15,8 +15,18 @@ async function start() {
         console.log('✅ Autenticação Google Classroom OK!');
 
         const sock = await connectToWhatsApp();
-        const notificationNumber = process.env.NOTIFICATION_NUMBER;
         const ownerLid = process.env.OWNER_LID;
+
+        // Função para obter todos os grupos onde o bot está
+        const getAllGroups = async () => {
+            try {
+                const chats = await sock.groupFetchAllParticipating();
+                return Object.keys(chats);
+            } catch (err) {
+                console.error('⚠️ Erro ao buscar grupos:', err.message);
+                return [];
+            }
+        };
 
         // Função de verificação periódica
         const performCheck = async () => {
@@ -27,6 +37,8 @@ async function start() {
                 if (newItems.length > 0) {
                     console.log(`📢 ${newItems.length} novas atualizações encontradas!`);
                     
+                    const groups = await getAllGroups();
+
                     for (const item of newItems) {
                         const message = item.type === 'activity' ? formatActivityMessage(item) : formatMaterialMessage(item);
                         
@@ -47,28 +59,30 @@ async function start() {
                             });
                         }
 
-                        // 2. Enviar para o Grupo (Se habilitado)
-                        if (notificationNumber && groupsEnabled) {
-                            try {
-                                const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
-                                const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
+                        // 2. Enviar para TODOS os Grupos (Se habilitado)
+                        if (groupsEnabled && groups.length > 0) {
+                            for (const groupId of groups) {
+                                try {
+                                    const groupMetadata = await sock.groupMetadata(groupId);
+                                    const participants = groupMetadata.participants.map(p => p.id);
 
-                                await sock.sendMessage(notificationNumber, { 
-                                    text: `@todos\n\n${message}`,
-                                    mentions: participants,
-                                    contextInfo: {
-                                        externalAdReply: {
-                                            title: item.courseName,
-                                            body: `Professor(a): ${item.teacherName}`,
-                                            mediaType: 1,
-                                            renderLargerThumbnail: true,
-                                            thumbnailUrl: item.teacherPhoto,
-                                            sourceUrl: item.link
+                                    await sock.sendMessage(groupId, { 
+                                        text: `@todos\n\n${message}`,
+                                        mentions: participants,
+                                        contextInfo: {
+                                            externalAdReply: {
+                                                title: item.courseName,
+                                                body: `Professor(a): ${item.teacherName}`,
+                                                mediaType: 1,
+                                                renderLargerThumbnail: true,
+                                                thumbnailUrl: item.teacherPhoto,
+                                                sourceUrl: item.link
+                                            }
                                         }
-                                    }
-                                });
-                            } catch (sendErr) {
-                                console.error(`⚠️ Falha ao enviar para o grupo:`, sendErr.message);
+                                    });
+                                } catch (sendErr) {
+                                    console.error(`⚠️ Falha ao enviar para o grupo ${groupId}:`, sendErr.message);
+                                }
                             }
                         }
                     }
@@ -110,7 +124,13 @@ async function start() {
 
                     if (hasActivities) {
                         if (ownerLid) await sock.sendMessage(ownerLid, { text: summary });
-                        if (notificationNumber && groupsEnabled) await sock.sendMessage(notificationNumber, { text: summary });
+                        
+                        if (groupsEnabled) {
+                            const groups = await getAllGroups();
+                            for (const groupId of groups) {
+                                await sock.sendMessage(groupId, { text: summary });
+                            }
+                        }
                     }
                 } catch (err) {
                     console.error('❌ Erro no resumo semanal:', err.message);
@@ -143,14 +163,18 @@ async function start() {
 
                                 if (ownerLid) await sock.sendMessage(ownerLid, { text: `*⏰ LEMBRETE PRIVADO*\n\n${message}` });
 
-                                if (notificationNumber && groupsEnabled) {
-                                    const groupMetadata = notificationNumber.endsWith('@g.us') ? await sock.groupMetadata(notificationNumber) : null;
-                                    const participants = groupMetadata ? groupMetadata.participants.map(p => p.id) : [];
-
-                                    await sock.sendMessage(notificationNumber, { 
-                                        text: `@todos\n\n${message}`,
-                                        mentions: participants
-                                    });
+                                if (groupsEnabled) {
+                                    const groups = await getAllGroups();
+                                    for (const groupId of groups) {
+                                        try {
+                                            const groupMetadata = await sock.groupMetadata(groupId);
+                                            const participants = groupMetadata.participants.map(p => p.id);
+                                            await sock.sendMessage(groupId, { 
+                                                text: `@todos\n\n${message}`,
+                                                mentions: participants
+                                            });
+                                        } catch (e) {}
+                                    }
                                 }
                                 reminderCache.add(activity.id);
                             }
@@ -211,9 +235,9 @@ _O bot continua ativo no seu PV mesmo se os grupos estiverem pausados._
 > *!notas* - Ver notas recentes
 
 *📢 FERRAMENTAS ADMIN*
-> *!on* - Ativar notificações nos GRUPOS
-> *!off* - Pausar notificações nos GRUPOS
-> *!bc [texto]* - Aviso Geral no Grupo
+> *!on* - Ativar notificações em TODOS os grupos
+> *!off* - Pausar notificações em TODOS os grupos
+> *!bc [texto]* - Aviso Geral em TODOS os grupos
 
 *📊 STATUS DOS GRUPOS:*
 > *Notificações:* ${groupsEnabled ? '🟢 ATIVAS' : '🔴 PAUSADAS'}
@@ -228,7 +252,7 @@ _Monitorando atividades e materiais_`;
                     caption: menuText,
                     contextInfo: {
                         externalAdReply: {
-                            title: 'CLASSROOM BOT v2.6',
+                            title: 'CLASSROOM BOT v2.7',
                             body: 'Painel de Controle Administrativo',
                             mediaType: 1,
                             thumbnailUrl: menuImageUrl,
@@ -241,7 +265,7 @@ _Monitorando atividades e materiais_`;
             else if (text === '!on') {
                 if (!isOwner) return;
                 groupsEnabled = true;
-                await sock.sendMessage(from, { text: '🟢 *GRUPOS ATIVADOS*\nAs notificações no grupo foram retomadas.' });
+                await sock.sendMessage(from, { text: '🟢 *GRUPOS ATIVADOS*\nAs notificações em todos os grupos foram retomadas.' });
             }
 
             else if (text === '!off') {
@@ -253,13 +277,16 @@ _Monitorando atividades e materiais_`;
             else if (text.startsWith('!bc ')) {
                 if (!isOwner) return;
                 const broadcastMsg = text.replace('!bc ', '').trim();
-                if (!broadcastMsg || !notificationNumber) return;
+                if (!broadcastMsg) return;
                 
-                await sock.sendMessage(notificationNumber, { 
-                    text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
-                    mentions: [msg.key.participant || from]
-                });
-                await sock.sendMessage(from, { text: '✅ *Broadcast enviado com sucesso!*' });
+                const groups = await getAllGroups();
+                for (const groupId of groups) {
+                    await sock.sendMessage(groupId, { 
+                        text: `*📢 AVISO IMPORTANTE*\n\n${broadcastMsg}\n\n_Enviado por: @${msg.key.participant?.split('@')[0] || from.split('@')[0]}_`,
+                        mentions: [msg.key.participant || from]
+                    });
+                }
+                await sock.sendMessage(from, { text: `✅ *Broadcast enviado para ${groups.length} grupos!*` });
             }
 
             else if (text === '!check' || text === '!verificar') {
